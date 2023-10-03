@@ -1,0 +1,14 @@
+{
+  "resourceName": "amplifyappstore",
+  "policyUUID": "e8568566",
+  "bucketName": "amplifyappstore-hapi-bucket",
+  "storageAccess": "auth",
+  "guestAccess": [],
+  "authAccess": [
+    "CREATE_AND_UPDATE",
+    "READ",
+    "DELETE"
+  ],
+  "triggerFunction": "NONE",
+  "groupAccess": {}
+}
