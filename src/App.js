@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
 import "@aws-amplify/ui-react/styles.css";
-import { API, Storage } from "aws-amplify";
+import { API, Storage, Auth } from "aws-amplify";
 import {
   withAuthenticator,
   Button,
@@ -20,24 +20,39 @@ import {
 
 const App = ({ signOut }) => {
   const [notes, setNotes] = useState([]);
+  const [user, setUser] = useState('');
 
   useEffect(() => {
     fetchNotes();
+    getUser();
   }, []);
 
+  async function getUser() {
+    const userInfo = await Auth.currentUserInfo();
+    setUser(userInfo.username);
+  }
+
   async function fetchNotes() {
-    const apiData = await API.graphql({ query: listNotes });
+    const apiData = await API.graphql({ 
+      query: listNotes,
+      authMode: "AMAZON_COGNITO_USER_POOLS",
+    });
     const notesFromAPI = apiData.data.listNotes.items;
     await Promise.all(
       notesFromAPI.map(async (note) => {
+        console.log(note);
         if (note.image) {
-          const url = await Storage.get(note.name);
-          note.image = url;
+          const url = await Storage.get(note.image);
+          note.imagesrc = url;
         }
         return note;
       })
     );
     setNotes(notesFromAPI);
+  }
+
+  function randomS3Key() {
+    return String(Math.floor(Math.random() * 9e20));
   }
 
   async function createNote(event) {
@@ -49,22 +64,28 @@ const App = ({ signOut }) => {
       description: form.get("description"),
       image: image.name,
     };
-    if (!!data.image) await Storage.put(data.name, image);
+    if (!!data.image) {
+      data.image =  user + '-' + randomS3Key() + data.image;
+      await Storage.put(data.image, image);
+    }
     await API.graphql({
       query: createNoteMutation,
       variables: { input: data },
+      authMode: "AMAZON_COGNITO_USER_POOLS",
     });
     fetchNotes();
     event.target.reset();
   }
 
-  async function deleteNote({ id, name }) {
+  async function deleteNote({ id, image }) {
     const newNotes = notes.filter((note) => note.id !== id);
     setNotes(newNotes);
-    await Storage.remove(name);
+    console.log(image);
+    await Storage.remove(image);
     await API.graphql({
       query: deleteNoteMutation,
       variables: { input: { id } },
+      authMode: "AMAZON_COGNITO_USER_POOLS",
     });
   }
 
@@ -95,7 +116,7 @@ const App = ({ signOut }) => {
             type="file"
             style={{ alignSelf: "end" }}
           />
-          <Button type="submit" variation="primary">
+          <Button type="submit" variation="primary" disabled={!user}>
             Create Note
           </Button>
         </Flex>
@@ -109,13 +130,16 @@ const App = ({ signOut }) => {
             justifyContent="center"
             alignItems="center"
           >
+            <Text as="strong" fontWeight={700} color="green">
+              {note.owner}
+            </Text>
             <Text as="strong" fontWeight={700}>
               {note.name}
             </Text>
             <Text as="span">{note.description}</Text>
             {note.image && (
               <Image
-                src={note.image}
+                src={note.imagesrc}
                 alt={`visual aid for ${notes.name}`}
                 style={{ width: 100 }}
               />
